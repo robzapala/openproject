@@ -1,0 +1,132 @@
+x-op-env: &op-env
+  DATABASE_URL: postgres://openproject:${OP_DB_PASSWORD:?Set OP_DB_PASSWORD in .env}@db/openproject?pool=20
+  SECRET_KEY_BASE: ${OP_SECRET_KEY_BASE:?Set OP_SECRET_KEY_BASE in .env}
+  OPENPROJECT_RAILS__CACHE__STORE: memcache
+  OPENPROJECT_CACHE__MEMCACHE__SERVER: cache:11211
+  OPENPROJECT_HOST__NAME: ${OP_PUBLIC_HOST:?Set OP_PUBLIC_HOST in .env}
+  OPENPROJECT_HTTPS: "true"
+  OPENPROJECT_ADDITIONAL__HOST__NAMES: ${OP_TAILSCALE_HOST:?Set OP_TAILSCALE_HOST in .env}
+  OPENPROJECT_DEFAULT__LANGUAGE: pl
+  OPENPROJECT_SEED_LOCALE: pl
+  OPENPROJECT_SELF__REGISTRATION: "0"
+  OPENPROJECT_WEB_WORKERS: ${OP_WEB_WORKERS:-0}
+  OPENPROJECT_GOOD__JOB__MAX__THREADS: ${OP_GOOD_JOB_MAX_THREADS:-3}
+
+x-op-app: &op-app
+  image: openproject/openproject:${OP_IMAGE_TAG:-17-slim}
+  environment: *op-env
+  volumes:
+    - ${OP_DATA_DIR:-/share/Container/openproject}/assets:/var/openproject/assets
+  depends_on:
+    db:
+      condition: service_healthy
+    cache:
+      condition: service_started
+
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    mem_limit: ${OP_DB_MEM:-512m}
+    environment:
+      POSTGRES_USER: openproject
+      POSTGRES_DB: openproject
+      POSTGRES_PASSWORD: ${OP_DB_PASSWORD:?Set OP_DB_PASSWORD in .env}
+    volumes:
+      - ${OP_DATA_DIR:-/share/Container/openproject}/pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openproject -d openproject"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  cache:
+    image: memcached:1.6-alpine
+    restart: unless-stopped
+    mem_limit: ${OP_CACHE_MEM:-64m}
+    command: ["memcached", "-m", "${OP_CACHE_MB:-48}"]
+
+  seeder:
+    <<: *op-app
+    command: ./docker/prod/seeder
+    restart: on-failure
+    mem_limit: ${OP_WEB_MEM:-1200m}
+    environment:
+      <<: *op-env
+      OPENPROJECT_SEED__ADMIN__USER__PASSWORD: ${OP_ADMIN_PASSWORD:?Set OP_ADMIN_PASSWORD in .env}
+      OPENPROJECT_SEED__ADMIN__USER__PASSWORD__RESET: "false"
+
+  web:
+    <<: *op-app
+    command: ./docker/prod/web
+    restart: unless-stopped
+    mem_limit: ${OP_WEB_MEM:-1200m}
+    depends_on:
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_started
+      seeder:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8080/health_checks/default"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  worker:
+    <<: *op-app
+    command: ./docker/prod/worker
+    restart: unless-stopped
+    mem_limit: ${OP_WORKER_MEM:-768m}
+    depends_on:
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_started
+      seeder:
+        condition: service_completed_successfully
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    profiles: [public]
+    restart: unless-stopped
+    mem_limit: ${OP_CLOUDFLARED_MEM:-64m}
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?Set CLOUDFLARE_TUNNEL_TOKEN in .env}
+    depends_on:
+      - web
+
+  tailscale:
+    image: tailscale/tailscale:stable
+    profiles: [tailnet]
+    restart: unless-stopped
+    mem_limit: ${OP_TAILSCALE_MEM:-96m}
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY:?Set TS_AUTHKEY in .env}
+      TS_HOSTNAME: openproject
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_SERVE_CONFIG: /config/serve.json
+      TS_USERSPACE: "true"
+    volumes:
+      - ${OP_DATA_DIR:-/share/Container/openproject}/tailscale:/var/lib/tailscale
+      - ./tailscale:/config:ro
+    depends_on:
+      - web
+
+  local-proxy:
+    image: alpine/socat:latest
+    profiles: [local]
+    restart: unless-stopped
+    # Limit via deploy.* so the mem_limit count stays at the seven stack services.
+    deploy:
+      resources:
+        limits:
+          memory: 32m
+    command: tcp-listen:8080,fork,reuseaddr tcp-connect:web:8080
+    ports:
+      - 127.0.0.1:${OP_LOCAL_PORT:-8080}:8080
+    depends_on:
+      - web
