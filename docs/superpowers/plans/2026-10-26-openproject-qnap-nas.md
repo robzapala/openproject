@@ -15,7 +15,7 @@
 - Obraz OpenProject: `openproject/openproject:17-slim` (18.x jeszcze niewydane).
 - Baza: `postgres:17`. Dane: `${OP_DATA_DIR:-/share/Container/openproject}/{pgdata,assets}`; kopie: `${OP_BACKUP_DIR:-/share/Backup/openproject}`.
 - `OPENPROJECT_HOST__NAME=${OP_PUBLIC_HOST}`, `OPENPROJECT_HTTPS=true`, `OPENPROJECT_ADDITIONAL__HOST__NAMES=${OP_TAILSCALE_HOST}`, `OPENPROJECT_DEFAULT__LANGUAGE=pl`, `OPENPROJECT_SEED_LOCALE=pl`, `OPENPROJECT_SELF__REGISTRATION=0`.
-- Profile pamięci (4 GB domyślny / 8 GB / 16 GB docelowy): `db` 512m/1g/2g, `cache` 64/128/256 MB, `web` 1200m/2g/3g z `OPENPROJECT_WEB_WORKERS` 0/1/2, `worker` 768m/1g/1536m z `OPENPROJECT_GOOD__JOB__MAX__THREADS` 3/5/10, `cloudflared` 64m, `tailscale` 96m, `backup` 128m.
+- Profile pamięci (4 GB domyślny / 8 GB / 16 GB docelowy): `db` 512m/1g/2g, `cache` 64/128/256 MB, `web` 1200m/2g/3g z `OPENPROJECT_WEB_WORKERS` 0/1/2, `worker` 1g/1280m/1536m z `OPENPROJECT_GOOD__JOB__MAX__THREADS` 3/5/10, `cloudflared` 64m, `tailscale` 96m, `backup` 128m.
 - Żaden port nie jest publikowany na interfejsie publicznym; `web` opcjonalnie na `127.0.0.1:${OP_LOCAL_PORT:-8081}` tylko w profilu `local`.
 - Sekrety tylko w `deploy/qnap/.env` (w `.gitignore`); w repo wyłącznie `.env.example`.
 - Kopia nocna 03:15, retencja `BACKUP_RETENTION_DAYS=14`.

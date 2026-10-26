@@ -732,6 +732,10 @@ Kontener `backup` robi kopię **co noc o 03:15** (czas `TZ`, domyślnie
 - Kopie starsze niż `BACKUP_RETENTION_DAYS` dni (domyślnie 14) są usuwane
   automatycznie.
 - Katalog docelowy to `OP_BACKUP_DIR`.
+- Pliki kopii mają uprawnienia `0640` (katalogi `0750`) i należą do administratora
+  NAS-a (root): inni użytkownicy NAS-a ich nie odczytają, bo zrzut bazy zawiera
+  wszystkie dane i skróty haseł. Administrator (i HBS3, który działa jako
+  administrator) odczyta je bez przeszkód, więc kopia poza domem działa normalnie.
 - Kopia powstaje najpierw w katalogu tymczasowym i jest przenoszona na miejsce
   dopiero po udanym wykonaniu — nieudana nie zostawia niepełnego katalogu.
 
@@ -916,7 +920,7 @@ Wartości profili:
 | `OP_CACHE_MEM` | 64m | 128m | 256m |
 | `OP_CACHE_MB` | 48 | 96 | 192 |
 | `OP_WEB_MEM` | 1200m | 2g | 3g |
-| `OP_WORKER_MEM` | 768m | 1g | 1536m |
+| `OP_WORKER_MEM` | 1g | 1280m | 1536m |
 | `OP_WEB_WORKERS` | 0 | 1 | 2 |
 | `OP_GOOD_JOB_MAX_THREADS` | 3 | 5 | 10 |
 
@@ -996,8 +1000,15 @@ Ten komunikat dostaniesz też, wchodząc na adres IP NAS-a lub przez profil `loc
 - `docker stats --no-stream` pokazuje zużycie względem limitów.
 - Sprawdź, który kontener został ubity:
   `docker inspect -f '{{.State.OOMKilled}}' $(docker compose ps -q web)` (analogicznie `worker`, `db`).
+- Kod wyjścia 137 lub status z informacją o braku pamięci (OOM) w `docker compose ps`
+  oznacza, że kontener przekroczył swój limit — zwiększ limit tej usługi
+  (`OP_WEB_MEM`, `OP_WORKER_MEM` albo `OP_DB_MEM`) w `.env` i wykonaj `up -d`.
 - Rozwiązanie: zainstaluj RAM i przełącz profil na 8/16 GB (rozdział 12) albo zwiększ
   pojedynczy limit w `.env` (`OP_WEB_MEM`, `OP_WORKER_MEM`, `OP_DB_MEM`).
+- Dla orientacji, zużycie przy profilu 4 GB w spoczynku (zmierzone w teście):
+  `web` ok. 750 MiB, `worker` ok. 650 MiB, `db` ok. 100 MiB, razem ok. 1,7 GiB.
+  Ciężkie zadania (eksport, masowe przenoszenie zadań) chwilowo zużywają więcej,
+  stąd limity większe od zużycia w spoczynku.
 
 **`opm` zwraca „Authentication failed (401)”.** Zły lub wygaśnięty token
 (`OPM_TOKEN`), albo w administracji OpenProject nie są włączone tokeny API

@@ -79,7 +79,7 @@ services:
     <<: *op-app
     command: ./docker/prod/worker
     restart: unless-stopped
-    mem_limit: ${OP_WORKER_MEM:-768m}
+    mem_limit: ${OP_WORKER_MEM:-1g}
     depends_on:
       db:
         condition: service_healthy

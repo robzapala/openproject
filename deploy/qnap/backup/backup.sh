@@ -1,5 +1,6 @@
 #!/bin/sh
 set -eu
+umask 027
 
 BACKUP_ROOT=/backups
 RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-14}"

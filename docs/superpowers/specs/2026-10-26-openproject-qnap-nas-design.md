@@ -51,7 +51,7 @@ portu na hoście (opcjonalnie `127.0.0.1`/LAN do diagnostyki).
 | `cache`     | `memcached:1.6`                    | cache Rails                            | 64 MB / 128 MB / 256 MB         |
 | `seeder`    | `openproject/openproject:17-slim`  | migracje + seed, jednorazowo przy starcie | —                            |
 | `web`       | `openproject/openproject:17-slim`  | Puma (`OPENPROJECT_WEB_WORKERS` 0 / 1 / 2) | 1.2 GB / 2 GB / 3 GB        |
-| `worker`    | `openproject/openproject:17-slim`  | GoodJob (zadania w tle i cykliczne)    | 768 MB / 1 GB / 1.5 GB          |
+| `worker`    | `openproject/openproject:17-slim`  | GoodJob (zadania w tle i cykliczne)    | 1 GB / 1.25 GB / 1.5 GB         |
 | `cloudflared` | `cloudflare/cloudflared`         | tunel publiczny `pm.<domena>`          | 64 MB                           |
 | `tailscale` | `tailscale/tailscale`              | węzeł tailnet + `tailscale serve`      | 96 MB                           |
 | `backup`    | `postgres:17` + skrypt             | nocny `pg_dump` + tar załączników      | 128 MB                          |
