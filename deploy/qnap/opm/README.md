@@ -34,7 +34,8 @@ Aktualizacja: ponów polecenie z opcją `--force`.
 ## Konfiguracja
 
 `OPM_URL` to adres `https://` z Tailscale (nie adres publiczny za Cloudflare Access).
-Klient nie podąża za przekierowaniami — przy `http://` poda, jakiego adresu użyć.
+Klient nie podąża za przekierowaniami — przy `http://` poda, jakiego adresu użyć. Adres `http://` jest
+odrzucany (kod 2), chyba że to `localhost`, `127.0.0.1` lub host `*.ts.net`.
 
 ```bash
 export OPM_URL=https://openproject.<tailnet>.ts.net
