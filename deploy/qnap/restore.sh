@@ -44,7 +44,7 @@ if ! docker compose run --rm --no-deps -T --entrypoint sh -v "$backup_dir:/resto
   exit 1
 fi
 if ! docker compose run --rm --no-deps -T --entrypoint sh -v "$backup_dir:/restore:ro" backup \
-  -c 'pg_restore -l /restore/openproject.dump >/dev/null' >/dev/null; then
+  -c 'pg_restore -f /dev/null /restore/openproject.dump' >/dev/null; then
   echo "Plik openproject.dump jest uszkodzony lub niepełny. Nic nie zostało zmienione." >&2
   exit 1
 fi
@@ -52,7 +52,8 @@ fi
 if [ "$assume_yes" != true ]; then
   echo "UWAGA: odtworzenie zastąpi CAŁĄ bazę danych i wszystkie załączniki danymi z:"
   echo "  $backup_dir"
-  echo "Aktualne dane zostaną bezpowrotnie utracone. Aplikacja będzie chwilowo niedostępna."
+  echo "Obecne załączniki zostaną bezpowrotnie utracone. Obecna baza zostanie zachowana jako"
+  echo "openproject_before_restore (do następnego odtwarzania). Aplikacja będzie chwilowo niedostępna."
   read -r -p "Kontynuować? [t/N] " answer || answer=""
   case "$answer" in
     t | T | tak | TAK | y | Y | yes) ;;
@@ -89,9 +90,21 @@ docker compose up -d --wait db
 
 stage="odtwarzanie bazy danych"
 echo "Odtwarzam bazę danych..."
-docker compose exec -T db pg_restore --clean --if-exists --no-owner --single-transaction \
-  -U openproject -d openproject < "$backup_dir/openproject.dump"
-db_state="ODTWORZONA z kopii"
+docker compose exec -T db psql -v ON_ERROR_STOP=1 -q -U openproject -d postgres \
+  -c "DROP DATABASE IF EXISTS openproject_restore" -c "CREATE DATABASE openproject_restore"
+docker compose exec -T db pg_restore --no-owner --single-transaction \
+  -U openproject -d openproject_restore < "$backup_dir/openproject.dump"
+
+stage="podmiana bazy danych"
+db_state="PODMIANA PRZERWANA (sprawdź: docker compose exec db psql -U openproject -d postgres -l)"
+docker compose exec -T db psql -v ON_ERROR_STOP=1 -q -o /dev/null -U openproject -d postgres <<'SQL'
+SELECT pg_terminate_backend(pid) FROM pg_stat_activity
+  WHERE datname = 'openproject' AND pid <> pg_backend_pid();
+DROP DATABASE IF EXISTS openproject_before_restore;
+ALTER DATABASE openproject RENAME TO openproject_before_restore;
+ALTER DATABASE openproject_restore RENAME TO openproject;
+SQL
+db_state="ODTWORZONA z kopii (poprzednia baza: openproject_before_restore)"
 
 stage="rozpakowywanie załączników"
 echo "Rozpakowuję załączniki..."
