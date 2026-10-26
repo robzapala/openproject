@@ -20,8 +20,8 @@ def config_path() -> Path:
 
 def load_config() -> Config:
     file_values = _read_file(config_path())
-    url = os.environ.get("OPM_URL") or file_values.get("url")
-    token = os.environ.get("OPM_TOKEN") or file_values.get("token")
+    url = str(os.environ.get("OPM_URL") or file_values.get("url") or "").strip()
+    token = str(os.environ.get("OPM_TOKEN") or file_values.get("token") or "").strip()
 
     missing = [name for name, value in (("OPM_URL", url), ("OPM_TOKEN", token)) if not value]
     if missing:
@@ -32,10 +32,10 @@ def load_config() -> Config:
             '  token = "<API token from My account > Access tokens>"'
         )
 
-    url = str(url).strip().rstrip("/")
+    url = url.rstrip("/")
     if not url.startswith(("http://", "https://")):
         raise ConfigError(f"OPM_URL must start with http:// or https://, got {url!r}.")
-    return Config(url=url, token=str(token).strip())
+    return Config(url=url, token=token)
 
 
 def _read_file(path: Path) -> dict:

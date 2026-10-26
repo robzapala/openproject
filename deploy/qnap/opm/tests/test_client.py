@@ -1,4 +1,5 @@
 import base64
+import datetime
 import json
 
 import httpx
@@ -353,8 +354,6 @@ def test_log_time_uses_iso_duration_and_entity_link(api, client, hours, expected
 
 
 def test_log_time_defaults_to_today(api, client):
-    import datetime
-
     post = api.post("/api/v3/time_entries").respond(201, json={"id": 3, "hours": "PT1H", "spentOn": "x"})
 
     client.log_time(42, 1)
@@ -511,3 +510,50 @@ def test_summarize_work_package():
         "lockVersion": 3,
         "url": "https://op.test/work_packages/42",
     }
+
+
+def test_html_200_response_is_reported(api, client):
+    api.get("/api/v3/users/me").respond(200, html="<html>Login</html>")
+
+    with pytest.raises(OpenProjectError) as exc:
+        client.whoami()
+
+    assert "non-JSON" in exc.value.message
+    assert "OPM_URL" in exc.value.message
+
+
+@pytest.mark.parametrize("body", [b"", b"<html>Moved</html>"])
+def test_redirect_is_not_followed_and_names_location(api, client, body):
+    api.post("/api/v3/time_entries").respond(
+        301, headers={"Location": "https://op.test/api/v3/time_entries"}, content=body
+    )
+
+    with pytest.raises(OpenProjectError) as exc:
+        client.log_time(42, 1)
+
+    assert exc.value.status == 301
+    assert "https://op.test/api/v3/time_entries" in exc.value.message
+    assert "OPM_URL" in exc.value.message
+
+
+def test_http_to_https_redirect_message():
+    def handler(request):
+        return httpx.Response(301, headers={"Location": "https://op.test/api/v3/users/me"})
+
+    client = OpenProjectClient("http://op.test", "tok", transport=httpx.MockTransport(handler))
+
+    with pytest.raises(OpenProjectError) as exc:
+        client.whoami()
+
+    assert "https://op.test" in exc.value.message
+
+
+def test_payload_missing_expected_keys_is_reported(api, client):
+    api.get("/api/v3/users/me").respond(json={"hello": "world"})
+    api.get("/api/v3/work_packages").respond(json={"hello": "world"})
+    api.get("/api/v3/work_packages/42").respond(json={"hello": "world"})
+
+    for call in (client.whoami, client.search_work_packages, lambda: client.update_work_package(42, subject="x")):
+        with pytest.raises(OpenProjectError) as exc:
+            call()
+        assert "Unexpected response" in exc.value.message

@@ -72,7 +72,7 @@ class OpenProjectClient:
         self._cache: dict[str, list[dict]] = {}
 
     def whoami(self) -> dict:
-        raw = self._request("GET", "/api/v3/users/me")
+        raw = self._request("GET", "/api/v3/users/me", expect=("id",))
         return {key: raw.get(key) for key in ("id", "name", "login", "email")}
 
     def list_projects(self) -> list[dict]:
@@ -128,10 +128,10 @@ class OpenProjectClient:
                 "sortBy": json.dumps([["updatedAt", "desc"]]),
             },
         )
-        return [summarize_work_package(wp, self.base_url) for wp in raw["_embedded"]["elements"]]
+        return [summarize_work_package(wp, self.base_url) for wp in self._elements(raw)]
 
     def get_work_package(self, wp_id: int) -> dict:
-        return self._detailed(self._request("GET", f"/api/v3/work_packages/{wp_id}"))
+        return self._detailed(self._request("GET", f"/api/v3/work_packages/{wp_id}", expect=("id",)))
 
     def create_work_package(
         self,
@@ -158,7 +158,7 @@ class OpenProjectClient:
             links["assignee"] = {"href": f"/api/v3/users/{self._user_id(assignee)}"}
         if links:
             body["_links"] = links
-        raw = self._request("POST", f"/api/v3/projects/{project_id}/work_packages", json=body)
+        raw = self._request("POST", f"/api/v3/projects/{project_id}/work_packages", json=body, expect=("id",))
         return summarize_work_package(raw, self.base_url)
 
     def update_work_package(self, wp_id: int, **changes) -> dict:
@@ -169,15 +169,15 @@ class OpenProjectClient:
             )
         body = self._update_body(changes)
         path = f"/api/v3/work_packages/{wp_id}"
-        lock_version = self._request("GET", path)["lockVersion"]
+        lock_version = self._request("GET", path, expect=("lockVersion",))["lockVersion"]
         try:
-            raw = self._request("PATCH", path, json={**body, "lockVersion": lock_version})
+            raw = self._request("PATCH", path, json={**body, "lockVersion": lock_version}, expect=("id",))
         except OpenProjectError as exc:
             if exc.status != 409:
                 raise
-            lock_version = self._request("GET", path)["lockVersion"]
+            lock_version = self._request("GET", path, expect=("lockVersion",))["lockVersion"]
             try:
-                raw = self._request("PATCH", path, json={**body, "lockVersion": lock_version})
+                raw = self._request("PATCH", path, json={**body, "lockVersion": lock_version}, expect=("id",))
             except OpenProjectError as retry_exc:
                 if retry_exc.status != 409:
                     raise
@@ -260,7 +260,7 @@ class OpenProjectClient:
         if value.isdigit():
             return int(value)
         try:
-            return self._request("GET", f"/api/v3/projects/{quote(value, safe='')}")["id"]
+            return self._request("GET", f"/api/v3/projects/{quote(value, safe='')}", expect=("id",))["id"]
         except OpenProjectError as exc:
             if exc.status != 404:
                 raise
@@ -303,12 +303,26 @@ class OpenProjectClient:
                 path,
                 params={**(params or {}), "pageSize": self._page_size, "offset": len(elements) // self._page_size + 1},
             )
-            batch = page["_embedded"]["elements"]
+            batch = self._elements(page)
             elements.extend(batch)
             if len(batch) < self._page_size or len(elements) >= page.get("total", len(elements)):
                 return elements
 
-    def _request(self, method: str, path: str, params: dict | None = None, json: dict | None = None) -> dict:
+    @staticmethod
+    def _elements(payload: dict) -> list[dict]:
+        elements = (payload.get("_embedded") or {}).get("elements")
+        if not isinstance(elements, list):
+            raise OpenProjectError("Unexpected response from OpenProject: collection has no elements. Check OPM_URL.")
+        return elements
+
+    def _request(
+        self,
+        method: str,
+        path: str,
+        params: dict | None = None,
+        json: dict | None = None,
+        expect: tuple[str, ...] = (),
+    ) -> dict:
         try:
             response = self._http.request(method, path, params=params, json=json)
         except httpx.HTTPError as exc:
@@ -317,7 +331,34 @@ class OpenProjectClient:
             ) from exc
         if response.status_code >= 400:
             raise self._error_for(response)
-        return response.json() if response.content else {}
+        if response.is_redirect:
+            location = response.headers.get("Location", "an unknown address")
+            raise OpenProjectError(
+                f"OpenProject redirected the request to {location} (HTTP {response.status_code}). "
+                f"Set OPM_URL to that address (typically the https:// one) instead of {self.base_url}.",
+                status=response.status_code,
+            )
+        payload = self._parse_json(response)
+        missing = [key for key in expect if key not in payload]
+        if missing:
+            raise OpenProjectError(
+                f"Unexpected response from {self.base_url}: missing {', '.join(missing)}. Check OPM_URL."
+            )
+        return payload
+
+    def _parse_json(self, response: httpx.Response) -> dict:
+        if not response.content:
+            return {}
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = None
+        if not isinstance(payload, dict):
+            raise OpenProjectError(
+                f"Unexpected non-JSON response from {self.base_url} (HTTP {response.status_code}); "
+                "check OPM_URL points at OpenProject itself, not a login or proxy page."
+            )
+        return payload
 
     def _error_for(self, response: httpx.Response) -> OpenProjectError:
         status = response.status_code

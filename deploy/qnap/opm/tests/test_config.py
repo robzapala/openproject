@@ -69,3 +69,13 @@ def test_invalid_toml_raises_config_error(isolated_home):
 
     with pytest.raises(ConfigError):
         load_config()
+
+
+def test_whitespace_only_token_counts_as_missing(monkeypatch):
+    monkeypatch.setenv("OPM_URL", "https://env.example")
+    monkeypatch.setenv("OPM_TOKEN", "  ")
+
+    with pytest.raises(ConfigError) as exc:
+        load_config()
+
+    assert "OPM_TOKEN" in str(exc.value)
