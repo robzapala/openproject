@@ -79,3 +79,35 @@ def test_whitespace_only_token_counts_as_missing(monkeypatch):
         load_config()
 
     assert "OPM_TOKEN" in str(exc.value)
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["http://localhost:8081", "http://127.0.0.1:8081", "http://openproject.tail1234.ts.net"],
+)
+def test_http_is_allowed_for_local_and_tailnet_hosts(monkeypatch, url):
+    monkeypatch.setenv("OPM_URL", url)
+    monkeypatch.setenv("OPM_TOKEN", "t")
+
+    assert load_config().url == url
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["http://pm.example.com", "http://192.168.1.10:8080", "http://evil.ts.net.example.com", "http://notlocalhost"],
+)
+def test_http_to_other_hosts_is_rejected(monkeypatch, url):
+    monkeypatch.setenv("OPM_URL", url)
+    monkeypatch.setenv("OPM_TOKEN", "t")
+
+    with pytest.raises(ConfigError) as exc:
+        load_config()
+
+    assert "https://" in str(exc.value)
+
+
+def test_https_to_any_host_is_allowed(monkeypatch):
+    monkeypatch.setenv("OPM_URL", "https://pm.example.com")
+    monkeypatch.setenv("OPM_TOKEN", "t")
+
+    assert load_config().url == "https://pm.example.com"

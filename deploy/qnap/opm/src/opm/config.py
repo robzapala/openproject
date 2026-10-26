@@ -2,6 +2,7 @@ import os
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlparse
 
 
 class ConfigError(Exception):
@@ -35,7 +36,17 @@ def load_config() -> Config:
     url = url.rstrip("/")
     if not url.startswith(("http://", "https://")):
         raise ConfigError(f"OPM_URL must start with http:// or https://, got {url!r}.")
+    parsed = urlparse(url)
+    if parsed.scheme == "http" and not _is_plain_http_host(parsed.hostname or ""):
+        raise ConfigError(
+            f"OPM_URL {url!r} uses plain http://, which would send the API token unencrypted. "
+            "Use https://. Plain http:// is only accepted for localhost, 127.0.0.1 and *.ts.net hosts."
+        )
     return Config(url=url, token=token)
+
+
+def _is_plain_http_host(host: str) -> bool:
+    return host in ("localhost", "127.0.0.1") or host.endswith(".ts.net")
 
 
 def _read_file(path: Path) -> dict:
