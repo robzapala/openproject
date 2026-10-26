@@ -323,6 +323,20 @@ def test_add_comment(api, client):
     }
 
 
+def test_comment_user_falls_back_to_id_when_link_has_no_title(api, client):
+    api.post("/api/v3/work_packages/42/activities").respond(
+        201,
+        json={
+            "id": 78,
+            "comment": {"raw": "Gotowe"},
+            "createdAt": "t",
+            "_links": {"user": {"href": "/api/v3/users/4"}},
+        },
+    )
+
+    assert client.add_comment(42, "Gotowe")["user"] == "user #4"
+
+
 def test_list_comments_skips_activities_without_comment(api, client):
     api.get("/api/v3/work_packages/42/activities").respond(
         json=collection(

@@ -43,11 +43,19 @@ def _iso_duration(hours: float) -> str:
     return "PT" + (f"{whole_hours}H" if whole_hours else "") + (f"{rest}M" if rest else "")
 
 
+def _activity_user(links: dict) -> str | None:
+    user = links.get("user") or {}
+    if user.get("title"):
+        return user["title"]
+    user_id = (user.get("href") or "").rstrip("/").rsplit("/", 1)[-1]
+    return f"user #{user_id}" if user_id.isdigit() else None
+
+
 def _simplify_activity(raw: dict) -> dict:
     return {
         "id": raw.get("id"),
         "comment": (raw.get("comment") or {}).get("raw", ""),
-        "user": _title(raw.get("_links", {}), "user"),
+        "user": _activity_user(raw.get("_links", {})),
         "createdAt": raw.get("createdAt"),
     }
 

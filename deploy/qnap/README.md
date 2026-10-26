@@ -143,10 +143,16 @@ mkdir -p /share/Container/openproject/pgdata \
          /share/Container/openproject/assets \
          /share/Container/openproject/tailscale
 mkdir -p /share/Backup/openproject
+chown 1000:1000 /share/Container/openproject/assets
 ```
 
+Ostatnie polecenie jest konieczne: OpenProject działa w kontenerze jako
+użytkownik o numerze 1000 i bez tego nie zapisze załączników (obrazów, plików
+w zadaniach) — przy próbie dodania załącznika dostaniesz błąd o braku uprawnień
+do systemu plików.
+
 Jeżeli w `.env` ustawisz inne ścieżki (`OP_DATA_DIR`, `OP_BACKUP_DIR`), utwórz
-katalogi w tych miejscach.
+katalogi w tych miejscach (i tam wykonaj `chown`).
 
 ---
 
@@ -1018,6 +1024,12 @@ powody: zbyt słabe `OP_ADMIN_PASSWORD` (wygeneruj dłuższe i zrestartuj
 względem istniejącej bazy (hasło bazy ustawia się tylko przy jej pierwszym
 utworzeniu — po zmianie trzeba skasować `pgdata`, tracąc dane, albo zmienić hasło
 w PostgreSQL), albo brak miejsca na dysku.
+
+**Dodanie załącznika kończy się błędem „brak uprawnień do systemu plików”.**
+Katalog `assets` nie należy do użytkownika 1000. Wykonaj
+`chown -R 1000:1000 /share/Container/openproject/assets` (rozdział 2.5; przy
+innej wartości `OP_DATA_DIR` użyj jej ścieżki) i spróbuj ponownie — restart nie jest
+potrzebny.
 
 **Kontener `backup` restartuje się z błędem uprawnień.** Skrypty utraciły bit
 wykonywalności — `chmod +x restore.sh backup/*.sh` (rozdział 3).
