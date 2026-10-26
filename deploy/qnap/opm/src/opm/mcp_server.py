@@ -40,11 +40,11 @@ def build_server(client_factory: Callable[[], OpenProjectClient]) -> MCPServer:
     def list_projects() -> str:
         return lazy.call("list_projects")
 
-    @server.tool(description="List work package statuses (id, name, isClosed). Use the names for status filters and updates.")
+    @server.tool(description="List work package statuses (id, name, isClosed). Use these exact names (the instance is seeded in Polish) for status filters and updates.")
     def list_statuses() -> str:
         return lazy.call("list_statuses")
 
-    @server.tool(description="List work package types (id, name), e.g. Task, Bug. Use the names when creating work packages.")
+    @server.tool(description="List work package types (id, name). Use these exact names (the instance is seeded in Polish) when creating work packages.")
     def list_types() -> str:
         return lazy.call("list_types")
 
@@ -86,7 +86,7 @@ def build_server(client_factory: Callable[[], OpenProjectClient]) -> MCPServer:
     @server.tool(
         description=(
             "Create a work package in a project. "
-            f"{NAMES_HINT} type: type name such as 'Task' or 'Bug'. "
+            f"{NAMES_HINT} type: a type name as returned by list_types. "
             "assignee: user name or login, or 'me' for the token owner. description: Markdown. "
             "Dates are YYYY-MM-DD. Returns the created work package including its url."
         )
@@ -114,7 +114,7 @@ def build_server(client_factory: Callable[[], OpenProjectClient]) -> MCPServer:
     @server.tool(
         description=(
             "Update fields of a work package; only the fields you pass are changed, at least one is required. "
-            "status: status name such as 'In progress' or 'Closed'. "
+            "status: a status name as returned by list_statuses. "
             "assignee: user name or login, or 'me' for the token owner. description: Markdown, replaces the old one. "
             "Dates are YYYY-MM-DD. percent_done: integer 0-100. "
             "An edit conflict is retried once automatically."
