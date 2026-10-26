@@ -43,6 +43,7 @@ Wszystko uruchamia się poleceniem `docker compose` z pliku `compose.yml`:
 
 | Usługa        | Rola                                                                  |
 |---------------|-----------------------------------------------------------------------|
+| `preflight`   | jednorazowe zadanie: odmawia startu, gdy w `.env` zostały hasła `change-me…` |
 | `db`          | baza PostgreSQL 17                                                    |
 | `cache`       | memcached (cache aplikacji)                                           |
 | `seeder`      | jednorazowe zadanie: migracje bazy i dane początkowe                  |
@@ -118,7 +119,9 @@ Jeśli chcesz użyć innych folderów, zmienisz je później w `.env`
 ssh admin@ADRES-IP-NAS
 ```
 
-Używasz konta z grupy administratorów (zwykle `admin`). Sprawdź, że Docker
+Używasz konta z grupy administratorów (zwykle `admin`). Jeśli to konto nie nazywa się
+`admin`, a kolejne polecenia (`docker`, `chown`, `mkdir` w `/share`) zgłaszają brak
+uprawnień, wpisz najpierw `sudo -i` i pracuj dalej jako administrator. Sprawdź, że Docker
 działa:
 
 ```bash
@@ -167,6 +170,10 @@ docker run --rm -v /share/Container:/git alpine/git clone --depth 1 \
   --branch claude/peaceful-mayer-mgvjbs \
   https://github.com/robzapala/openproject.git /git/openproject-src
 ```
+
+Adres używa gałęzi `claude/peaceful-mayer-mgvjbs`. Po zatwierdzeniu (merge) zmian do
+repozytorium zamień `--branch claude/peaceful-mayer-mgvjbs` na domyślną gałąź forka
+(albo pomiń opcję `--branch`).
 
 To pobiera całe repozytorium OpenProject (kilkaset MB, ale tylko ostatnią wersję);
 potrzebny jest z niego tylko katalog `deploy/qnap`. Dalej pracujesz **zawsze w tym katalogu**:
@@ -292,6 +299,7 @@ W katalogu `deploy/qnap`:
 ```bash
 cd /share/Container/openproject-src/deploy/qnap
 cp .env.example .env
+chmod 600 .env
 ```
 
 Wartości w `.env` ustawisz poleceniami `sed`, które możesz po prostu skopiować
@@ -361,15 +369,21 @@ domyślne dla 4 GB RAM. Ich pełny opis jest w [rozdziale 15](#15-opis-zmiennych
 ### 6.3. Obowiązkowe sprawdzenie
 
 ```bash
-grep -n 'change-me' .env
-grep -nE '^[A-Z_]+=.*(example\.com|tailnet-name)' .env
+grep -nE 'change-me|example\.com|tailnet-name|twoja-domena|tail1234ab|WKLEJ' .env
 docker compose --profile public --profile tailnet config -q
 ```
 
-**Wszystkie trzy polecenia muszą nic nie wypisać.** Jeśli pierwsze lub drugie
-wypisze linię, została w niej wartość przykładowa — popraw ją odpowiednim
-poleceniem `sed` z 6.1 lub 6.2. Jeśli trzecie wypisze błąd w rodzaju „Set
-TS_AUTHKEY in .env”, brakuje jakiejś wartości.
+**Oba polecenia muszą nic nie wypisać.** Jeśli pierwsze wypisze linię, została w
+niej wartość przykładowa — z `.env.example` albo z przykładów w tej instrukcji —
+popraw ją odpowiednim poleceniem `sed` z 6.1 lub 6.2. Jeśli drugie wypisze błąd w
+rodzaju „Set TS_AUTHKEY in .env”, brakuje jakiejś wartości.
+
+Jako ostatnią zaporę stos ma usługę `preflight`: gdy `OP_DB_PASSWORD`,
+`OP_SECRET_KEY_BASE` lub `OP_ADMIN_PASSWORD` zaczyna się od `change-me` albo
+`OP_SECRET_KEY_BASE` ma mniej niż 64 znaki, `docker compose up -d` kończy się
+komunikatem po polsku (`BŁĄD: … ma wartość przykładową …`), a baza i aplikacja w ogóle
+się nie uruchamiają. Popraw `.env` według 6.1 i wykonaj `up -d` ponownie — nic nie
+zostało zapisane w bazie, więc nie trzeba nic kasować.
 
 Plik `.env` jest w `.gitignore` i **nie trafia do repozytorium**. Zachowaj jego
 kopię w menedżerze haseł: **kopie zapasowe z rozdziału 10 nie obejmują `.env`**,
@@ -526,6 +540,10 @@ instalacja bezpośrednio z GitHuba:
 pipx install "git+https://github.com/robzapala/openproject.git@claude/peaceful-mayer-mgvjbs#subdirectory=deploy/qnap/opm"
 ```
 
+Adres zawiera gałąź `claude/peaceful-mayer-mgvjbs`; po zatwierdzeniu zmian do
+repozytorium zamień `@claude/peaceful-mayer-mgvjbs` na domyślną gałąź forka (albo usuń
+`@…` z adresu).
+
 Albo z lokalnej kopii repozytorium (np. po `git clone`):
 
 ```bash
@@ -542,7 +560,9 @@ Aktualizacja: ponów polecenie `pipx install` z opcją `--force`.
 **`OPM_URL` musi być adresem `https://` z Tailscale**, bez końcowego ukośnika:
 `https://openproject.<tailnet>.ts.net`. Klient nie podąża za przekierowaniami —
 jeśli podasz `http://…`, dostaniesz komunikat o przekierowaniu wraz z adresem,
-którego trzeba użyć. Laptop musi mieć włączony Tailscale.
+którego trzeba użyć. Adres `http://` jest odrzucany z błędem konfiguracji (kod 2), bo
+token szedłby nieszyfrowany; wyjątkiem są `localhost`, `127.0.0.1` i hosty `*.ts.net`.
+Laptop musi mieć włączony Tailscale.
 
 Najprościej (na każdym systemie) utwórz plik konfiguracyjny. Ścieżka to
 `~/.config/opm/config.toml`, czyli w Windows
@@ -625,6 +645,9 @@ opm time 42 1h30m
 ```
 
 Nazwy statusów i typów zależą od instalacji — zobacz `opm statuses` i `opm types`.
+Wbudowane przepływy pracy mogą odrzucać niektóre zmiany statusu (błąd 422 — dozwolone
+są tylko wybrane przejścia), a rejestrowanie czasu (`opm time`) wymaga włączonego
+modułu czasu pracy w danym projekcie (inaczej błąd 403).
 `--assignee` przyjmuje imię i nazwisko, login, e-mail lub `me` (właściciel tokenu).
 Czas: `1.5h`, `1,5h`, `90m`, `1h30m` albo sama liczba godzin.
 
@@ -757,6 +780,16 @@ ls -l /share/Backup/openproject
 
 W logu zobaczysz linię „Następna kopia: …”.
 
+**Raz w miesiącu** sprawdź, że kopie naprawdę powstają:
+
+```bash
+ls -lt /share/Backup/openproject | head -3
+```
+
+Najnowszy katalog powinien mieć datę z ostatniej doby. Raz — najlepiej zaraz po
+uruchomieniu — wykonaj też **próbne odtworzenie** (10.3) i sprawdź, że dane wróciły;
+kopia, której nigdy nie odtworzono, jest tylko nadzieją.
+
 ### 10.2. Kopia ręczna
 
 Zawsze wykonaj ją przed aktualizacją lub większą zmianą:
@@ -769,8 +802,10 @@ Wypisze `Kopia gotowa: /backups/<data_godzina>` (w `/share/Backup/openproject` n
 
 ### 10.3. Odtwarzanie
 
-Odtwarzanie **zastępuje całą bazę i wszystkie załączniki** danymi z kopii.
-Wykonaj w `deploy/qnap`, podając **bezwzględną** ścieżkę katalogu kopii:
+Odtwarzanie **zastępuje całą bazę i wszystkie załączniki** danymi z kopii. Potrzebujesz
+na dysku (`OP_DATA_DIR`) wolnego miejsca co najmniej na drugą kopię bazy, bo stara baza
+zostaje obok nowej (patrz niżej). Wykonaj w `deploy/qnap`, podając **bezwzględną**
+ścieżkę katalogu kopii:
 
 ```bash
 ./restore.sh /share/Backup/openproject/2026-10-26_0315
@@ -780,10 +815,22 @@ Skrypt:
 
 1. sprawdza poprawność plików kopii (jeśli są uszkodzone — nic nie zmienia),
 2. prosi o potwierdzenie (wpisz `t`; opcja `--yes` pomija pytanie),
-3. zatrzymuje `web` i `worker`, odtwarza bazę, podmienia załączniki,
+3. zatrzymuje `web` i `worker`, odtwarza bazę do nowej, pustej bazy
+   `openproject_restore` (działająca baza nie jest ruszana, dopóki odtwarzanie się nie
+   uda), po czym zamienia je nazwami i podmienia załączniki,
 4. uruchamia aplikację ponownie (nie rusza `cloudflared` ani `tailscale`).
 
 Po zakończeniu poczekaj kilka minut i sprawdź `docker compose ps`.
+
+**Poprzednia baza zostaje jako kopia bezpieczeństwa** o nazwie
+`openproject_before_restore` — gdyby odtworzono nie tę kopię, co trzeba, dane sprzed
+odtwarzania nadal tam są (załączniki nie: te zostają podmienione bezpowrotnie).
+Następne odtwarzanie nadpisze `openproject_before_restore` nową „poprzednią” bazą.
+Gdy już jej nie potrzebujesz, zwolnij miejsce:
+
+```bash
+docker compose exec db dropdb -U openproject openproject_before_restore
+```
 
 Kopia zawiera całą bazę, więc po odtworzeniu **hasła użytkowników, w tym
 administratora, są takie, jakie były w momencie robienia kopii** — nie
@@ -800,7 +847,10 @@ Kopie na tym samym NAS-ie nie chronią przed kradzieżą, pożarem ani awarią
 urządzenia. Wysyłaj je poza dom:
 
 1. W **App Center** zainstaluj **Hybrid Backup Sync 3 (HBS3)**.
-2. Otwórz HBS3 → **Sync** (lub **Backup & Restore**) → **Utwórz zadanie**.
+2. Otwórz HBS3 → **Backup & Restore** → **Utwórz zadanie kopii zapasowej** z włączonym
+   **wersjonowaniem**. **Nie używaj zadania typu „Sync”**: synchronizacja odwzorowuje
+   też usunięcia, więc po 14 dniach, gdy NAS kasuje stare kopie, zniknęłyby one również
+   z miejsca docelowego — zostałoby Ci tylko 14 dni historii.
 3. Źródło: folder `/Backup/openproject` (cały).
 4. Cel: wybrana chmura (np. Backblaze B2, Amazon S3, Google Drive) albo
    zewnętrzny dysk / drugi NAS. Podaj dane dostępowe.
@@ -818,8 +868,17 @@ Zachowaj kopię `.env` poza NAS-em (rozdział 6).
 
 W obrębie linii 17.x aktualizujesz tak:
 
+Najpierw zapisz, jaka wersja działa teraz (przyda się, gdyby trzeba było wrócić):
+
 ```bash
 cd /share/Container/openproject-src/deploy/qnap
+docker compose exec web cat /app/PRODUCT_VERSION     # np. v17.9.4
+```
+
+(`docker compose images web` pokaże tylko tag `17-slim`, bez numeru wersji.)
+Potem:
+
+```bash
 docker compose exec backup /backup/backup.sh      # 1. kopia przed aktualizacją
 docker run --rm -v /share/Container:/git alpine/git -C /git/openproject-src pull --ff-only   # 2. nowa wersja zestawu
 docker compose --profile public --profile tailnet pull                                       # 3. nowe obrazy
@@ -834,6 +893,23 @@ docker compose --profile public --profile tailnet up -d                         
   `tailscale` (bez profili pobrałby tylko usługi podstawowe).
 - Migracje bazy wykonuje kontener `seeder` przy starcie; śledź je w
   `docker compose logs -f seeder web`.
+
+**Powrót do poprzedniej wersji.** Migracje są jednokierunkowe, więc samo przełączenie
+obrazu nie wystarczy — trzeba odtworzyć kopię sprzed aktualizacji **i** uruchomić
+poprzednią wersję obrazu:
+
+1. W `.env` ustaw `OP_IMAGE_TAG` na tag z numerem wersji zapisanej przed aktualizacją
+   (z `v17.9.4` powstaje `OP_IMAGE_TAG=17.9.4-slim`). Sprawdziłem tylko, że tag
+   `17.9.4-slim` istnieje na Docker Hub; dla innych wersji nazwę tagu potwierdź na
+   <https://hub.docker.com/r/openproject/openproject/tags> (polecenie
+   `docker manifest inspect openproject/openproject:<wersja>-slim` wypisze dane, jeśli tag istnieje).
+2. `docker compose --profile public --profile tailnet pull`
+3. Odtwórz kopię z kroku 1 aktualizacji: `./restore.sh /share/Backup/openproject/<katalog>`
+   (10.3). Skrypt kończy się `docker compose up -d`, który uruchomi już starą wersję
+   obrazu.
+
+Wczytywanie kopii wykonanej już po aktualizacji do starszej wersji aplikacji nie jest
+wspierane — dlatego kopię robisz przed każdą aktualizacją.
 
 **Zmiana wersji głównej (17 → 18)** nie dzieje się sama: obraz jest przypięty
 do `OP_IMAGE_TAG=17-slim`. Gdy wyjdzie linia 18, najpierw przeczytaj uwagi
@@ -1025,6 +1101,12 @@ na laptopie i sprawdź adres w `OPM_URL`.
 **`opm` zwraca „Missing configuration” (kod 2).** Ustaw `OPM_URL` i `OPM_TOKEN`
 albo utwórz `~/.config/opm/config.toml` (rozdział 9.3).
 
+**`docker compose up -d` kończy się „service \"preflight\" didn't complete successfully”.**
+Zobacz `docker compose logs preflight`: komunikat „BŁĄD: … ma wartość przykładową
+(change-me...)” lub „OP_SECRET_KEY_BASE … krótszy niż 64 znaki” oznacza, że w `.env`
+zostały wartości z `.env.example`. Ustaw własne według rozdziału 6.1 i uruchom
+`up -d` ponownie. Baza nie została wtedy utworzona, więc nie trzeba kasować `pgdata`.
+
 **Stos nie startuje i pisze „Set … in .env”.** Brakuje wartości wymaganej
 zmiennej — pamiętaj, że `CLOUDFLARE_TUNNEL_TOKEN`, `TS_AUTHKEY` i `OP_TAILSCALE_HOST`
 muszą być niepuste także wtedy, gdy profil nie jest używany (rozdział 6.2).
@@ -1069,6 +1151,9 @@ Wartości ustawiasz w pliku `deploy/qnap/.env`. Zmiany zastosujesz poleceniem
 | `OP_LOCAL_PORT` | `8081` | Port na `127.0.0.1` NAS-a dla profilu `local` (diagnostyka). Nie używaj 8080 — zajmuje go panel QTS. |
 
 ### Sekrety
+
+Usługa `preflight` nie pozwoli uruchomić stosu, gdy `OP_DB_PASSWORD`, `OP_SECRET_KEY_BASE`
+lub `OP_ADMIN_PASSWORD` zaczyna się od `change-me`, albo `OP_SECRET_KEY_BASE` ma mniej niż 64 znaki.
 
 | Zmienna | Opis |
 |---------|------|
