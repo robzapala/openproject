@@ -21,7 +21,8 @@ własnym NAS-ie, dostępne z każdego miejsca i sterowane z CLI oraz z Claude
 ### Ograniczenia i założenia
 
 - Sprzęt: QNAP TS-453D-4G, Intel Celeron J4125 (x86_64), 4 GB RAM. Docelowo
-  rozbudowa do 8 GB (2 × 4 GB DDR4 SO-DIMM, oficjalne maksimum). Konfiguracja
+  16 GB (2 × GOODRAM GR2666S464L19S/8G, DDR4 SO-DIMM 2666 CL19 — powyżej
+  oficjalnego maksimum 8 GB, potwierdzone przez społeczność). Konfiguracja
   musi działać już na 4 GB.
 - Oprogramowanie: QTS + Container Station (Docker Compose).
 - Wersja Community — wbudowany serwer MCP OpenProject (`/mcp`) wymaga tokenu
@@ -44,20 +45,22 @@ portu na hoście (opcjonalnie `127.0.0.1`/LAN do diagnostyki).
 
 ### Usługi (`deploy/qnap/compose.yml`)
 
-| Usługa      | Obraz                              | Rola                                   | Limit RAM (4 GB / 8 GB) |
-|-------------|------------------------------------|----------------------------------------|-------------------------|
-| `db`        | `postgres:17`                      | baza danych                            | 512 MB / 1 GB           |
-| `cache`     | `memcached:1.6`                    | cache Rails                            | 96 MB                   |
-| `seeder`    | `openproject/openproject:17-slim`  | migracje + seed, jednorazowo przy starcie | —                    |
-| `web`       | `openproject/openproject:17-slim`  | Puma, 1 proces (`OPENPROJECT_WEB_WORKERS`) | 1.2 GB / 2 GB       |
-| `worker`    | `openproject/openproject:17-slim`  | GoodJob (zadania w tle)                | 768 MB / 1.5 GB         |
-| `cron`      | `openproject/openproject:17-slim`  | zadania cykliczne                      | 384 MB                  |
-| `cloudflared` | `cloudflare/cloudflared`         | tunel publiczny `pm.<domena>`          | 64 MB                   |
-| `tailscale` | `tailscale/tailscale`              | węzeł tailnet + `tailscale serve`      | 96 MB                   |
-| `backup`    | `postgres:17` + skrypt             | nocny `pg_dump` + tar załączników      | 128 MB                  |
+| Usługa      | Obraz                              | Rola                                   | Limit RAM (4 GB / 8 GB / 16 GB) |
+|-------------|------------------------------------|----------------------------------------|---------------------------------|
+| `db`        | `postgres:17`                      | baza danych                            | 512 MB / 1 GB / 2 GB            |
+| `cache`     | `memcached:1.6`                    | cache Rails                            | 64 MB / 128 MB / 256 MB         |
+| `seeder`    | `openproject/openproject:17-slim`  | migracje + seed, jednorazowo przy starcie | —                            |
+| `web`       | `openproject/openproject:17-slim`  | Puma (`OPENPROJECT_WEB_WORKERS` 0 / 1 / 2) | 1.2 GB / 2 GB / 3 GB        |
+| `worker`    | `openproject/openproject:17-slim`  | GoodJob (zadania w tle i cykliczne)    | 768 MB / 1 GB / 1.5 GB          |
+| `cloudflared` | `cloudflare/cloudflared`         | tunel publiczny `pm.<domena>`          | 64 MB                           |
+| `tailscale` | `tailscale/tailscale`              | węzeł tailnet + `tailscale serve`      | 96 MB                           |
+| `backup`    | `postgres:17` + skrypt             | nocny `pg_dump` + tar załączników      | 128 MB                          |
 
-Limity są ustawiane zmiennymi w `.env`, z wartościami domyślnymi dla 4 GB i
-opisanym profilem dla 8 GB.
+Kontener `cron` z oficjalnego zestawu pominięto — obsługuje tylko pobieranie
+poczty IMAP; zadania cykliczne wykonuje GoodJob w `worker`.
+
+Limity są ustawiane zmiennymi w `.env`; `.env.example` zawiera trzy gotowe
+profile (4 GB — domyślny na start, 8 GB, 16 GB — docelowy).
 
 ### Konfiguracja OpenProject
 
