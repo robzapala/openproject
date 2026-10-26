@@ -88,6 +88,24 @@ services:
       seeder:
         condition: service_completed_successfully
 
+  backup:
+    image: postgres:17
+    restart: unless-stopped
+    mem_limit: ${OP_BACKUP_MEM:-128m}
+    entrypoint: ["/backup/entrypoint.sh"]
+    environment:
+      PGPASSWORD: ${OP_DB_PASSWORD:?Set OP_DB_PASSWORD in .env}
+      BACKUP_TIME: ${BACKUP_TIME:-03:15}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+      TZ: ${TZ:-Europe/Warsaw}
+    volumes:
+      - ./backup:/backup:ro
+      - ${OP_DATA_DIR:-/share/Container/openproject}/assets:/assets:ro
+      - ${OP_BACKUP_DIR:-/share/Backup/openproject}:/backups
+    depends_on:
+      db:
+        condition: service_healthy
+
   cloudflared:
     image: cloudflare/cloudflared:latest
     profiles: [public]
