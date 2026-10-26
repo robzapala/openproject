@@ -14,24 +14,28 @@ esac
 
 stamp=$(date +%Y-%m-%d_%H%M)
 target="$BACKUP_ROOT/$stamp"
-partial="$BACKUP_ROOT/.partial-$stamp"
 
 if [ -e "$target" ]; then
   echo "Kopia $target już istnieje, pomijam." >&2
   exit 1
 fi
 
+find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -name '.partial-*' -mmin +120 -exec rm -rf {} +
+
+partial=""
 trap 'rm -rf "$partial"' EXIT
 trap 'exit 1' INT TERM
 
-rm -rf "$partial"
-mkdir "$partial"
+partial=$(mktemp -d "$BACKUP_ROOT/.partial-XXXXXX")
+chmod 750 "$partial"
 
 echo "Zrzut bazy danych..."
 pg_dump -Fc -h db -U openproject -f "$partial/openproject.dump" openproject
 
 echo "Pakowanie załączników..."
-tar czf "$partial/assets.tar.gz" --numeric-owner -C /assets .
+tar_status=0
+tar czf "$partial/assets.tar.gz" --warning=no-file-changed --numeric-owner -C /assets . || tar_status=$?
+[ "$tar_status" -le 1 ] || exit "$tar_status"
 
 mv "$partial" "$target"
 echo "Kopia gotowa: $target"
