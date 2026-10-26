@@ -84,28 +84,26 @@ class OpenProjectClient:
         return {key: raw.get(key) for key in ("id", "name", "login", "email")}
 
     def list_projects(self) -> list[dict]:
-        return self._cached("projects", lambda: [
+        return [
             {"id": p["id"], "identifier": p.get("identifier"), "name": p.get("name")}
             for p in self._collect("/api/v3/projects")
-        ])
+        ]
 
     def list_statuses(self) -> list[dict]:
-        return self._cached("statuses", lambda: [
+        return [
             {"id": s["id"], "name": s["name"], "isClosed": s.get("isClosed")}
             for s in self._collect("/api/v3/statuses")
-        ])
+        ]
 
     def list_types(self) -> list[dict]:
-        return self._cached("types", lambda: [
-            {"id": t["id"], "name": t["name"]} for t in self._collect("/api/v3/types")
-        ])
+        return [{"id": t["id"], "name": t["name"]} for t in self._collect("/api/v3/types")]
 
     def list_users(self) -> list[dict]:
         filters = json.dumps([{"type": {"operator": "=", "values": ["User"]}}])
-        return self._cached("users", lambda: [
+        return [
             {"id": u["id"], "name": u.get("name"), "login": u.get("login"), "email": u.get("email")}
             for u in self._collect("/api/v3/principals", {"filters": filters})
-        ])
+        ]
 
     def search_work_packages(
         self,
@@ -278,12 +276,19 @@ class OpenProjectClient:
         value = str(value).strip()
         if value.isdigit():
             return int(value)
-        items = load_items()
         wanted = value.casefold()
-        matches = [
-            item for item in items
-            if any(str(item.get(field) or "").casefold() == wanted for field in fields)
-        ]
+
+        def find(items: list[dict]) -> list[dict]:
+            return [
+                item for item in items
+                if any(str(item.get(field) or "").casefold() == wanted for field in fields)
+            ]
+
+        items = self._cache.get(kind)
+        matches = find(items) if items is not None else []
+        if not matches:
+            items = self._cache[kind] = load_items()
+            matches = find(items)
         if len(matches) == 1:
             return matches[0]["id"]
 
@@ -297,11 +302,6 @@ class OpenProjectClient:
         raise OpenProjectError(
             f"Unknown {kind} {value!r}. Available: {', '.join(label(i) for i in items) or 'none'}."
         )
-
-    def _cached(self, key: str, load) -> list[dict]:
-        if key not in self._cache:
-            self._cache[key] = load()
-        return self._cache[key]
 
     def _collect(self, path: str, params: dict | None = None) -> list[dict]:
         elements: list[dict] = []

@@ -425,6 +425,45 @@ def test_name_lists_are_cached_per_instance(api, client):
     assert route.call_count == 1
 
 
+def test_public_lists_always_fetch_fresh(api, client):
+    route = api.get("/api/v3/statuses").respond(json=collection(*STATUSES).json())
+
+    client.list_statuses()
+    client.list_statuses()
+
+    assert route.call_count == 2
+
+
+def test_new_user_is_found_after_cache_refresh(api, client):
+    users = api.get("/api/v3/principals")
+    users.side_effect = [
+        collection({"id": 5, "name": "Ola", "login": "ola", "email": "o@x"}),
+        collection({"id": 5, "name": "Ola", "login": "ola", "email": "o@x"}, {"id": 6, "name": "Jan", "login": "jan"}),
+    ]
+    api.get("/api/v3/work_packages/42").respond(json=wp())
+    patch = api.patch("/api/v3/work_packages/42").respond(json=wp())
+
+    client.update_work_package(42, assignee="Ola")
+    client.update_work_package(42, assignee="Jan")
+
+    assert json.loads(patch.calls.last.request.content)["_links"]["assignee"] == {"href": "/api/v3/users/6"}
+    assert users.call_count == 2
+
+
+def test_unknown_name_reloads_once_then_raises(api, client):
+    users = api.get("/api/v3/principals").respond(json=collection({"id": 5, "name": "Ola"}).json())
+    api.get("/api/v3/work_packages/42").respond(json=wp())
+
+    with pytest.raises(OpenProjectError) as exc:
+        client.update_work_package(42, assignee="Jan")
+    assert "Unknown user" in exc.value.message
+    assert users.call_count == 1
+
+    with pytest.raises(OpenProjectError):
+        client.update_work_package(42, assignee="Jan")
+    assert users.call_count == 2
+
+
 def test_401_message(api, client):
     api.get("/api/v3/users/me").respond(401, json={"message": "You need to be authenticated"})
 
