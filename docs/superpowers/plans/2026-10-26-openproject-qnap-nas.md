@@ -15,7 +15,7 @@
 - Obraz OpenProject: `openproject/openproject:17-slim` (18.x jeszcze niewydane).
 - Baza: `postgres:17`. Dane: `${OP_DATA_DIR:-/share/Container/openproject}/{pgdata,assets}`; kopie: `${OP_BACKUP_DIR:-/share/Backup/openproject}`.
 - `OPENPROJECT_HOST__NAME=${OP_PUBLIC_HOST}`, `OPENPROJECT_HTTPS=true`, `OPENPROJECT_ADDITIONAL__HOST__NAMES=${OP_TAILSCALE_HOST}`, `OPENPROJECT_DEFAULT__LANGUAGE=pl`, `OPENPROJECT_SEED_LOCALE=pl`, `OPENPROJECT_SELF__REGISTRATION=0`.
-- Profile pamięci (4 GB domyślny / 8 GB / 16 GB docelowy): `db` 512m/1g/2g, `cache` 64/128/256 MB, `web` 1200m/2g/3g z `OPENPROJECT_WEB_WORKERS` 0/1/2, `worker` 1g/1280m/1536m z `OPENPROJECT_GOOD__JOB__MAX__THREADS` 3/5/10, `cloudflared` 64m, `tailscale` 96m, `backup` 128m.
+- Profile pamięci (4 GB domyślny / 8 GB / 16 GB docelowy): `db` 512m/1g/2g, `cache` 64/128/256 MB, `web` 1200m/2g/3g z `OPENPROJECT_WEB_WORKERS` 0/1/2, `worker` 1g/1280m/1536m z `OPENPROJECT_GOOD__JOB__MAX__THREADS` 3/5/10, `cloudflared` 64m, `tailscale` 96m, `backup` 128m, `preflight` 32m.
 - Żaden port nie jest publikowany na interfejsie publicznym; `web` opcjonalnie na `127.0.0.1:${OP_LOCAL_PORT:-8081}` tylko w profilu `local`.
 - Sekrety tylko w `deploy/qnap/.env` (w `.gitignore`); w repo wyłącznie `.env.example`.
 - Kopia nocna 03:15, retencja `BACKUP_RETENTION_DAYS=14`.
@@ -43,7 +43,7 @@
 - Create: `deploy/qnap/.gitignore` (zawiera `.env`)
 
 **Interfaces:**
-- Produces: nazwy usług `db`, `cache`, `seeder`, `web`, `worker`, `cloudflared`, `tailscale`, `backup`; zmienne `.env` wymienione w Global Constraints oraz `OP_DB_PASSWORD`, `OP_SECRET_KEY_BASE`, `OP_ADMIN_PASSWORD`, `CLOUDFLARE_TUNNEL_TOKEN`, `TS_AUTHKEY`, `OP_IMAGE_TAG` (domyślnie `17-slim`). Profile Compose: `public` (cloudflared), `tailnet` (tailscale), `local` (port 127.0.0.1). Usługi `db/cache/seeder/web/worker/backup` bez profilu.
+- Produces: nazwy usług `preflight`, `db`, `cache`, `seeder`, `web`, `worker`, `cloudflared`, `tailscale`, `backup`; zmienne `.env` wymienione w Global Constraints oraz `OP_DB_PASSWORD`, `OP_SECRET_KEY_BASE`, `OP_ADMIN_PASSWORD`, `CLOUDFLARE_TUNNEL_TOKEN`, `TS_AUTHKEY`, `OP_IMAGE_TAG` (domyślnie `17-slim`). Profile Compose: `public` (cloudflared), `tailnet` (tailscale), `local` (port 127.0.0.1). Usługi `preflight/db/cache/seeder/web/worker/backup` bez profilu. `preflight` (jednorazowy, `postgres:17`, `preflight.sh`) kończy się błędem, gdy `OP_DB_PASSWORD`, `OP_SECRET_KEY_BASE` lub `OP_ADMIN_PASSWORD` zaczyna się od `change-me` albo `OP_SECRET_KEY_BASE` ma mniej niż 64 znaki; `db` czeka na jego sukces.
 
 - [ ] **Step 1:** Napisz `compose.yml` z kotwicą `x-op-app` (obraz, `DATABASE_URL=postgres://openproject:${OP_DB_PASSWORD}@db/openproject?pool=20`, `OPENPROJECT_RAILS__CACHE__STORE=memcache`, `OPENPROJECT_CACHE__MEMCACHE__SERVER=cache:11211`, `SECRET_KEY_BASE`, zmienne z Global Constraints, wolumen `${OP_DATA_DIR}/assets:/var/openproject/assets`). `seeder`: `command: ./docker/prod/seeder`, `restart: on-failure`, `OPENPROJECT_SEED__ADMIN__USER__PASSWORD=${OP_ADMIN_PASSWORD}`, `OPENPROJECT_SEED__ADMIN__USER__PASSWORD__RESET=false`. `web`: `./docker/prod/web`, healthcheck `curl -fs http://localhost:8080/health_checks/default`, `depends_on: seeder: condition: service_completed_successfully`. `worker`: `./docker/prod/worker`. `db`: healthcheck `pg_isready`. Każda usługa `restart: unless-stopped` (poza `seeder`) i `mem_limit: ${..._MEM}`.
 - [ ] **Step 2:** `tailscale`: `TS_AUTHKEY`, `TS_HOSTNAME=openproject`, `TS_STATE_DIR=/var/lib/tailscale` (wolumen `${OP_DATA_DIR}/tailscale`), `TS_SERVE_CONFIG=/config/serve.json`, `TS_USERSPACE=true`. `serve.json`: HTTPS 443 na `${TS_CERT_DOMAIN}` → `http://web:8080`. `cloudflared`: `command: tunnel --no-autoupdate run`, `TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}`.
@@ -51,7 +51,7 @@
 - [ ] **Step 4: Walidacja**
 
 Run: `cd deploy/qnap && cp .env.example .env.test && docker compose --env-file .env.test --profile public --profile tailnet --profile local config -q && rm .env.test`
-Expected: brak wyjścia, kod 0. Dodatkowo `docker compose ... config | grep -c mem_limit` = 8.
+Expected: brak wyjścia, kod 0. Dodatkowo `docker compose ... config | grep -c mem_limit` = 9.
 
 - [ ] **Step 5: Commit** `git add deploy/qnap && git commit -m "Add Docker Compose stack for OpenProject on QNAP"`
 
@@ -66,7 +66,7 @@ Expected: brak wyjścia, kod 0. Dodatkowo `docker compose ... config | grep -c m
 - Produces: katalog `${OP_BACKUP_DIR}/YYYY-MM-DD_HHMM/` z `openproject.dump` (`pg_dump -Fc`) i `assets.tar.gz`; `restore.sh <katalog>`.
 
 - [ ] **Step 1:** `backup.sh` (POSIX sh, `set -eu`): `pg_dump -Fc -h db -U openproject openproject` → plik tymczasowy, potem `mv` (kopia nigdy nie jest „w połowie”); `tar czf` z `/assets` (montowane read-only); usuwa katalogi starsze niż `BACKUP_RETENTION_DAYS` przez `find -mindepth 1 -maxdepth 1 -type d -mtime +N`. `entrypoint.sh`: pętla czekająca do `BACKUP_TIME` (domyślnie `03:15`, strefa `TZ`), potem `backup.sh`; obsługa `backup.sh` uruchomionego ręcznie (`docker compose exec backup /backup/backup.sh`).
-- [ ] **Step 2:** `restore.sh <katalog>`: sprawdza istnienie obu plików, `docker compose stop web worker`, `pg_restore --clean --if-exists --no-owner -d openproject` w kontenerze `db`, rozpakowanie `assets.tar.gz` do `${OP_DATA_DIR}/assets`, `docker compose up -d`. Pyta o potwierdzenie (`--yes` pomija).
+- [ ] **Step 2:** `restore.sh <katalog>`: sprawdza istnienie obu plików, `docker compose stop web worker`, odtworzenie do świeżej bazy `openproject_restore` (`pg_restore --no-owner`), a następnie zamiana nazw baz (`openproject` → `openproject_before_restore`, `openproject_restore` → `openproject`) w kontenerze `db`, rozpakowanie `assets.tar.gz` do `${OP_DATA_DIR}/assets`, `docker compose up -d`. Pyta o potwierdzenie (`--yes` pomija).
 - [ ] **Step 3: Walidacja statyczna**
 
 Run: `shellcheck deploy/qnap/backup/*.sh deploy/qnap/restore.sh`

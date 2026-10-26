@@ -47,6 +47,7 @@ portu na hoście (opcjonalnie `127.0.0.1`/LAN do diagnostyki).
 
 | Usługa      | Obraz                              | Rola                                   | Limit RAM (4 GB / 8 GB / 16 GB) |
 |-------------|------------------------------------|----------------------------------------|---------------------------------|
+| `preflight` | `postgres:17` + skrypt             | jednorazowo: odmawia startu z hasłami `change-me…` | 32 MB                |
 | `db`        | `postgres:17`                      | baza danych                            | 512 MB / 1 GB / 2 GB            |
 | `cache`     | `memcached:1.6`                    | cache Rails                            | 64 MB / 128 MB / 256 MB         |
 | `seeder`    | `openproject/openproject:17-slim`  | migracje + seed, jednorazowo przy starcie | —                            |
@@ -85,8 +86,9 @@ profile (4 GB — domyślny na start, 8 GB, 16 GB — docelowy).
 - `backup` uruchamia się co noc (domyślnie 03:15): `pg_dump -Fc` +
   `tar.gz` katalogu `assets` do `/share/Backup/openproject/<data>/`, retencja
   14 dni (`BACKUP_RETENTION_DAYS`).
-- `restore.sh <katalog>` zatrzymuje aplikację, odtwarza bazę i załączniki,
-  uruchamia ponownie.
+- `restore.sh <katalog>` zatrzymuje aplikację, odtwarza bazę do świeżej bazy
+  i zamienia ją z działającą (poprzednia zostaje jako `openproject_before_restore`),
+  odtwarza załączniki i uruchamia ponownie.
 - Instrukcja wysyłki poza dom przez QNAP Hybrid Backup Sync (np. do chmury).
 
 ### Aktualizacje
