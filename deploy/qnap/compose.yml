@@ -24,6 +24,18 @@ x-op-app: &op-app
       condition: service_started
 
 services:
+  preflight:
+    image: postgres:17
+    restart: "no"
+    mem_limit: 32m
+    entrypoint: ["sh", "/preflight.sh"]
+    environment:
+      OP_DB_PASSWORD: ${OP_DB_PASSWORD:?Set OP_DB_PASSWORD in .env}
+      OP_SECRET_KEY_BASE: ${OP_SECRET_KEY_BASE:?Set OP_SECRET_KEY_BASE in .env}
+      OP_ADMIN_PASSWORD: ${OP_ADMIN_PASSWORD:?Set OP_ADMIN_PASSWORD in .env}
+    volumes:
+      - ./preflight.sh:/preflight.sh:ro
+
   db:
     image: postgres:17
     restart: unless-stopped
@@ -32,6 +44,9 @@ services:
       POSTGRES_USER: openproject
       POSTGRES_DB: openproject
       POSTGRES_PASSWORD: ${OP_DB_PASSWORD:?Set OP_DB_PASSWORD in .env}
+    depends_on:
+      preflight:
+        condition: service_completed_successfully
     volumes:
       - ${OP_DATA_DIR:-/share/Container/openproject}/pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -138,7 +153,6 @@ services:
     image: alpine/socat:latest
     profiles: [local]
     restart: unless-stopped
-    # Limit via deploy.* so the mem_limit count stays at the seven stack services.
     deploy:
       resources:
         limits:
