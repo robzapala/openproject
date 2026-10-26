@@ -19,7 +19,11 @@ Z GitHuba:
 pipx install "git+https://github.com/robzapala/openproject.git@claude/peaceful-mayer-mgvjbs#subdirectory=deploy/qnap/opm"
 ```
 
-Z lokalnej kopii repozytorium:
+Instalacja pipx: macOS `brew install pipx`, Debian/Ubuntu `sudo apt install pipx`,
+Windows `py -m pip install --user pipx` i `py -m pipx ensurepath` (potem otwórz
+nowy terminal). Szczegóły: [instrukcja główna, 9.2](../README.md#92-instalacja-opm-na-laptopie).
+
+Albo z lokalnej kopii repozytorium:
 
 ```bash
 pipx install ./deploy/qnap/opm
@@ -37,7 +41,8 @@ export OPM_URL=https://openproject.<tailnet>.ts.net
 export OPM_TOKEN=<token>
 ```
 
-albo plik `~/.config/opm/config.toml` (zmienne środowiskowe mają pierwszeństwo):
+albo plik `~/.config/opm/config.toml` (w Windows `C:\Users\<użytkownik>\.config\opm\config.toml`;
+zmienne środowiskowe mają pierwszeństwo, w PowerShell ustawisz je przez `setx`):
 
 ```toml
 url = "https://openproject.<tailnet>.ts.net"

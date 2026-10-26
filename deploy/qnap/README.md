@@ -74,7 +74,7 @@ NAS ma teraz 4 GB RAM i **na tym działa** (domyślny profil pamięci w `.env.ex
 jest właśnie na 4 GB). Wymianę na 16 GB możesz zrobić później, zanim zaczniesz
 tego potrzebować — patrz [rozdział 12](#12-wymiana-ram-i-przełączenie-profilu-pamięci).
 Zalecam jednak zainstalować nowe moduły i przetestować je **przed** wdrożeniem,
-bo wtedy NAS nie ma jeszcze danych, a okno na zwrot sprzętu (14 dni) biegnie od zakupu.
+bo wtedy NAS nie ma jeszcze danych, a okno na zwrot sprzętu (zwykle 14 dni) biegnie od otrzymania towaru.
 
 ### 2.2. Container Station
 
@@ -128,6 +128,8 @@ docker compose version
 
 Jeśli pojawi się `docker: command not found`, upewnij się, że Container Station
 jest zainstalowana i uruchomiona, a potem zaloguj się przez SSH ponownie.
+Jeśli `docker compose version` zgłasza błąd, zaktualizuj Container Station
+(**App Center**) do najnowszej wersji — starsze wydania nie mają polecenia `docker compose`.
 
 Po zakończeniu całej instalacji możesz SSH ponownie wyłączyć — będzie potrzebne
 tylko przy aktualizacjach i odtwarzaniu kopii.
@@ -204,9 +206,11 @@ Wszystkie kolejne polecenia `docker compose ...` wykonujesz z katalogu
 
    To jest wartość zmiennej **`OP_TAILSCALE_HOST`** (bez `https://`).
 4. Wygeneruj klucz autoryzacyjny: **Settings → Keys → Generate auth key**.
-   - Klucz wielokrotnego użytku (*Reusable*) nie jest konieczny — węzeł
-     rejestruje się raz, a jego stan zapisuje w `/share/Container/openproject/tailscale`.
-     Przydaje się tylko wtedy, gdybyś kiedyś skasował ten katalog i rejestrował węzeł od nowa.
+   - Zaznacz **Reusable** (klucz wielokrotnego użytku) — tak zaleca też
+     `.env.example`. Do pierwszego startu wystarczyłby klucz jednorazowy
+     (węzeł rejestruje się raz, a jego stan zapisuje w
+     `/share/Container/openproject/tailscale`), ale klucz wielokrotny pozwoli
+     zarejestrować węzeł od nowa, gdybyś kiedyś skasował ten katalog.
    - Tagi i wstępna akceptacja (*Pre-approved*) są opcjonalne.
    - Skopiuj klucz (zaczyna się od `tskey-auth-`) — to wartość **`TS_AUTHKEY`**.
      Wyświetla się tylko raz.
@@ -282,41 +286,58 @@ W katalogu `deploy/qnap`:
 ```bash
 cd /share/Container/openproject-src/deploy/qnap
 cp .env.example .env
-vi .env          # lub nano, jeśli jest zainstalowany; można też edytować plik przez WinSCP/SFTP
 ```
+
+Wartości w `.env` ustawisz poleceniami `sed`, które możesz po prostu skopiować
+i wkleić do terminala SSH — edytor `vi` z QTS jest niewygodny i nie musisz go
+używać. Każde polecenie `sed -i "s|^NAZWA=.*|NAZWA=wartość|" .env` podmienia
+całą linię `NAZWA=…` w pliku `.env`; znaki `|` zostają, zmieniasz tylko
+wartość po drugim `|`.
 
 > **Ostrzeżenie.** Wartości zaczynające się od `change-me` są w `.env.example`
 > publicznie znanymi przykładami. **Nigdy nie uruchamiaj stosu z takimi
 > wartościami** — każdy mógłby wtedy zalogować się na konto administratora lub
-> podrabiać sesje. Zastąp **każdą** wartość `change-me…` własną.
+> podrabiać sesje. Zastąp **każdą** wartość `change-me…` własną i wykonaj
+> sprawdzenie z punktu 6.3.
 
-### 6.1. Generowanie sekretów
+### 6.1. Sekrety (generowane automatycznie)
 
-Na NAS-ie (przez SSH) lub na laptopie:
+Trzy polecenia generują losowe sekrety i od razu wpisują je do `.env`:
 
 ```bash
-openssl rand -hex 64        # na OP_SECRET_KEY_BASE
-openssl rand -hex 24        # na OP_DB_PASSWORD (tylko znaki hex — hasło trafia do adresu URL)
-openssl rand -base64 24     # na OP_ADMIN_PASSWORD
+sed -i "s|^OP_SECRET_KEY_BASE=.*|OP_SECRET_KEY_BASE=$(openssl rand -hex 64)|" .env
+sed -i "s|^OP_DB_PASSWORD=.*|OP_DB_PASSWORD=$(openssl rand -hex 24)|" .env
+sed -i "s|^OP_ADMIN_PASSWORD=.*|OP_ADMIN_PASSWORD=$(openssl rand -base64 24)|" .env
 ```
 
-Każde polecenie wywołaj osobno i wklej wynik w odpowiednie miejsce. Nie dodawaj
-cudzysłowów ani spacji wokół `=`. Zapisz hasło administratora (`OP_ADMIN_PASSWORD`)
-w menedżerze haseł.
+`OP_DB_PASSWORD` to same znaki hex, bo hasło trafia do adresu URL bazy.
+Hasło administratora odczytasz i zapiszesz w menedżerze haseł poleceniem:
+
+```bash
+grep '^OP_ADMIN_PASSWORD=' .env
+```
 
 Hasło administratora musi spełniać wymagania OpenProject (m.in. co najmniej 10
 znaków i różne rodzaje znaków). Wynik `openssl rand -base64 24` zwykle je spełnia;
-gdyby logowanie się nie powiodło, wygeneruj hasło ponownie i zobacz rozdział 14.
+gdyby logowanie się nie powiodło, wygeneruj hasło ponownie (powtórz trzecie
+polecenie) i zobacz rozdział 14. Gdyby na NAS-ie nie było `openssl`, wygeneruj
+wartości na laptopie i wstaw je w to samo polecenie `sed` zamiast `$(openssl …)`.
 
-### 6.2. Wartości do uzupełnienia
+### 6.2. Adresy i klucze (wklejasz własne wartości)
+
+Zamień wartości po prawej stronie na swoje (nie usuwaj znaków `|`):
+
+```bash
+sed -i "s|^OP_PUBLIC_HOST=.*|OP_PUBLIC_HOST=pm.twoja-domena.pl|" .env
+sed -i "s|^OP_TAILSCALE_HOST=.*|OP_TAILSCALE_HOST=openproject.tail1234ab.ts.net|" .env
+sed -i "s|^CLOUDFLARE_TUNNEL_TOKEN=.*|CLOUDFLARE_TUNNEL_TOKEN=WKLEJ-TUTAJ-TOKEN-CLOUDFLARE|" .env
+sed -i "s|^TS_AUTHKEY=.*|TS_AUTHKEY=WKLEJ-TUTAJ-KLUCZ-TAILSCALE|" .env
+```
 
 | Zmienna | Co wpisać |
 |---------|-----------|
 | `OP_PUBLIC_HOST` | `pm.twoja-domena.pl` (rozdział 5) |
 | `OP_TAILSCALE_HOST` | `openproject.<tailnet>.ts.net` (rozdział 4) |
-| `OP_DB_PASSWORD` | wynik `openssl rand -hex 24` |
-| `OP_SECRET_KEY_BASE` | wynik `openssl rand -hex 64` |
-| `OP_ADMIN_PASSWORD` | wynik `openssl rand -base64 24` |
 | `CLOUDFLARE_TUNNEL_TOKEN` | token z kroku 5.1 |
 | `TS_AUTHKEY` | klucz z kroku 4.4 |
 
@@ -324,15 +345,36 @@ gdyby logowanie się nie powiodło, wygeneruj hasło ponownie i zobacz rozdział
 także wtedy, gdy danej ścieżki dostępu nie używasz.** Docker Compose sprawdza
 wszystkie usługi, również te, których profil nie jest włączony, i bez wartości
 przerwie działanie komunikatem w rodzaju „Set TS_AUTHKEY in .env”. Gdy
-np. nie korzystasz z Cloudflare, zostaw atrapę (`CLOUDFLARE_TUNNEL_TOKEN=nieuzywany`)
+np. nie korzystasz z Cloudflare, wpisz atrapę
+(`sed -i "s|^CLOUDFLARE_TUNNEL_TOKEN=.*|CLOUDFLARE_TUNNEL_TOKEN=nieuzywany|" .env`)
 i po prostu nie włączaj profilu `public`.
 
 Pozostałe zmienne (ścieżki, kopie, limity pamięci) mają sensowne wartości
 domyślne dla 4 GB RAM. Ich pełny opis jest w [rozdziale 15](#15-opis-zmiennych-env).
 
+### 6.3. Obowiązkowe sprawdzenie
+
+```bash
+grep -n 'change-me' .env
+grep -nE '^[A-Z_]+=.*(example\.com|tailnet-name)' .env
+docker compose --profile public --profile tailnet config -q
+```
+
+**Wszystkie trzy polecenia muszą nic nie wypisać.** Jeśli pierwsze lub drugie
+wypisze linię, została w niej wartość przykładowa — popraw ją odpowiednim
+poleceniem `sed` z 6.1 lub 6.2. Jeśli trzecie wypisze błąd w rodzaju „Set
+TS_AUTHKEY in .env”, brakuje jakiejś wartości.
+
 Plik `.env` jest w `.gitignore` i **nie trafia do repozytorium**. Zachowaj jego
 kopię w menedżerze haseł: **kopie zapasowe z rozdziału 10 nie obejmują `.env`**,
 a bez `OP_SECRET_KEY_BASE` i haseł nie odtworzysz środowiska od zera.
+
+### 6.4. Awaryjnie: edycja w `vi`
+
+Jeśli wolisz poprawić plik ręcznie: `vi .env`, strzałkami ustaw kursor, `i`
+włącza pisanie, a **Esc**, potem `:wq` i **Enter** zapisuje plik i wychodzi
+(`:q!` wychodzi bez zapisu). Plik można też edytować przez SFTP (np. WinSCP,
+Cyberduck), pamiętając o końcach linii w stylu Unix (LF).
 
 ---
 
@@ -381,7 +423,8 @@ Profil `local` uruchamia `local-proxy`, który wystawia `web` na
 
 ```bash
 docker compose --profile local up -d local-proxy
-curl -sI -H "Host: pm.twoja-domena.pl" -H "X-Forwarded-Proto: https" http://127.0.0.1:8080/
+PORT=$(grep '^OP_LOCAL_PORT=' .env | cut -d= -f2)
+curl -sI -H "Host: pm.twoja-domena.pl" -H "X-Forwarded-Proto: https" "http://127.0.0.1:${PORT:-8081}/"
 ```
 
 Służy do sprawdzenia z samego NAS-a (przez SSH), czy aplikacja odpowiada
@@ -392,9 +435,9 @@ logowanie nie zadziała: OpenProject wymusza HTTPS i sprawdza nazwę hosta, wię
 przekieruje na `https://pm.…` albo odrzuci żądanie jako „Invalid host_name
 configuration”. Do normalnej pracy używaj adresu Tailscale lub Cloudflare.
 
-Domyślny port `OP_LOCAL_PORT=8080` bywa zajęty — QTS sam używa portu 8080 do
-panelu administracyjnego. Jeżeli `local-proxy` zgłasza „address already in use”,
-ustaw w `.env` np. `OP_LOCAL_PORT=8081` i uruchom polecenie ponownie.
+Domyślny port diagnostyczny to `8081` (`OP_LOCAL_PORT`), bo QTS sam używa portu
+8080 do panelu administracyjnego. Jeżeli i ten port jest zajęty, ustaw w `.env`
+inną wartość `OP_LOCAL_PORT` i uruchom polecenie ponownie.
 
 ---
 
@@ -445,14 +488,33 @@ administracji (krok 8.3.5).
 
 ### 9.2. Instalacja `opm` na laptopie
 
-Wymagany jest Python 3.11 lub nowszy i [pipx](https://pipx.pypa.io/).
+Wymagany jest Python 3.11 lub nowszy (`python3 --version`; w Windows `py --version`)
+i [pipx](https://pipx.pypa.io/). Zainstaluj pipx zależnie od systemu:
+
+macOS (Homebrew):
 
 ```bash
-python3 -m pip install --user pipx
-python3 -m pipx ensurepath          # potem otwórz nowy terminal
+brew install pipx
+pipx ensurepath
 ```
 
-Instalacja bezpośrednio z GitHuba:
+Debian / Ubuntu:
+
+```bash
+sudo apt install pipx
+pipx ensurepath
+```
+
+Windows (PowerShell; Python z <https://www.python.org/downloads/>, w kreatorze
+zaznacz „Add python.exe to PATH” lub użyj launchera `py`):
+
+```powershell
+py -m pip install --user pipx
+py -m pipx ensurepath
+```
+
+Po `ensurepath` **zamknij i otwórz terminal ponownie**. Potem, na każdym systemie,
+instalacja bezpośrednio z GitHuba:
 
 ```bash
 pipx install "git+https://github.com/robzapala/openproject.git@claude/peaceful-mayer-mgvjbs#subdirectory=deploy/qnap/opm"
@@ -464,6 +526,8 @@ Albo z lokalnej kopii repozytorium (np. po `git clone`):
 pipx install ./deploy/qnap/opm
 ```
 
+(Wariant z GitHuba wymaga zainstalowanego Gita na laptopie.)
+
 Zainstalowane zostaną dwa polecenia: `opm` (CLI) i `opm-mcp` (serwer MCP dla Claude).
 Aktualizacja: ponów polecenie `pipx install` z opcją `--force`.
 
@@ -474,22 +538,34 @@ Aktualizacja: ponów polecenie `pipx install` z opcją `--force`.
 jeśli podasz `http://…`, dostaniesz komunikat o przekierowaniu wraz z adresem,
 którego trzeba użyć. Laptop musi mieć włączony Tailscale.
 
-Sposób 1 — zmienne środowiskowe:
-
-```bash
-export OPM_URL=https://openproject.tail1234ab.ts.net
-export OPM_TOKEN=wklej-token-tutaj
-```
-
-Sposób 2 — plik `~/.config/opm/config.toml`:
+Najprościej (na każdym systemie) utwórz plik konfiguracyjny. Ścieżka to
+`~/.config/opm/config.toml`, czyli w Windows
+`C:\Users\<użytkownik>\.config\opm\config.toml` (folder `.config\opm` utwórz
+sam). Zawartość:
 
 ```toml
 url = "https://openproject.tail1234ab.ts.net"
 token = "wklej-token-tutaj"
 ```
 
-Zmienne środowiskowe mają pierwszeństwo przed plikiem. Zabezpiecz plik:
-`chmod 600 ~/.config/opm/config.toml`.
+Zmienne środowiskowe `OPM_URL` i `OPM_TOKEN` mają pierwszeństwo przed plikiem.
+
+macOS / Linux — zmienne na czas bieżącej sesji terminala i zabezpieczenie pliku
+(`chmod` istnieje tylko w systemach uniksowych):
+
+```bash
+export OPM_URL=https://openproject.tail1234ab.ts.net
+export OPM_TOKEN=wklej-token-tutaj
+chmod 600 ~/.config/opm/config.toml
+```
+
+Windows (PowerShell) — zmienne zapamiętane na stałe (obowiązują w *nowo*
+otwartych terminalach):
+
+```powershell
+setx OPM_URL "https://openproject.tail1234ab.ts.net"
+setx OPM_TOKEN "wklej-token-tutaj"
+```
 
 Sprawdzenie:
 
@@ -699,6 +775,11 @@ Skrypt:
 
 Po zakończeniu poczekaj kilka minut i sprawdź `docker compose ps`.
 
+Kopia zawiera całą bazę, więc po odtworzeniu **hasła użytkowników, w tym
+administratora, są takie, jakie były w momencie robienia kopii** — nie
+wartość `OP_ADMIN_PASSWORD` z `.env` (ta działa tylko przy pierwszym starcie na
+pustej bazie).
+
 Odtwarzanie na świeżym NAS-ie: wykonaj rozdziały 2–7 (z tym samym `.env`),
 poczekaj na pierwszy start stosu, skopiuj katalog kopii na NAS (np. do
 `/share/Backup/openproject/`) i uruchom `./restore.sh` jak wyżej.
@@ -729,21 +810,20 @@ W obrębie linii 17.x aktualizujesz tak:
 
 ```bash
 cd /share/Container/openproject-src/deploy/qnap
-docker compose exec backup /backup/backup.sh      # kopia przed aktualizacją
-docker compose --profile public --profile tailnet pull
-docker compose --profile public --profile tailnet up -d
+docker compose exec backup /backup/backup.sh      # 1. kopia przed aktualizacją
+docker run --rm -v /share/Container:/git alpine/git -C /git/openproject-src pull --ff-only   # 2. nowa wersja zestawu
+docker compose --profile public --profile tailnet pull                                       # 3. nowe obrazy
+docker compose --profile public --profile tailnet up -d                                      # 4. restart ze zmianami
 ```
 
-Polecenie `pull` z podaniem profili pobiera także nowe obrazy `cloudflared`
-i `tailscale` (bez profili pobrałoby tylko usługi podstawowe). Migracje bazy
-wykonuje kontener `seeder` przy starcie; śledź je w `docker compose logs -f seeder web`.
-
-Aby zaktualizować również sam zestaw (`compose.yml`, skrypty), pobierz zmiany
-z repozytorium. Plik `.env` jest ignorowany przez Git i zostaje nietknięty:
-
-```bash
-docker run --rm -v /share/Container:/git alpine/git -C /git/openproject-src pull --ff-only
-```
+- Krok 2 pobiera zmiany zestawu (`compose.yml`, skrypty, `.env.example`). Plik
+  `.env` jest ignorowany przez Git i zostaje nietknięty. Po tym kroku porównaj
+  `.env.example` ze swoim `.env` (`diff .env.example .env`) — jeśli w
+  `.env.example` pojawiły się nowe zmienne, dopisz je do `.env`.
+- Krok 3 z podaniem profili pobiera także nowe obrazy `cloudflared` i
+  `tailscale` (bez profili pobrałby tylko usługi podstawowe).
+- Migracje bazy wykonuje kontener `seeder` przy starcie; śledź je w
+  `docker compose logs -f seeder web`.
 
 **Zmiana wersji głównej (17 → 18)** nie dzieje się sama: obraz jest przypięty
 do `OP_IMAGE_TAG=17-slim`. Gdy wyjdzie linia 18, najpierw przeczytaj uwagi
@@ -765,8 +845,9 @@ wymaga odtworzenia kopii.
    Wstaw **oba** moduły GOODRAM GR2666S464L19S/8G. **Oryginalny moduł 4 GB
    zachowaj** w antystatycznym opakowaniu — przyda się, jeśli nowa pamięć okaże
    się wadliwa.
-3. 16 GB to więcej niż oficjalne maksimum QNAP (8 GB). Konfiguracja z
-   GOODRAM jest potwierdzana przez użytkowników, ale gwarancji producent NAS-a nie daje.
+3. 16 GB to więcej niż oficjalne maksimum QNAP (8 GB). Użytkownicy zgłaszają, że
+   16–32 GB w tym modelu działa, ale producent NAS-a tego oficjalnie nie wspiera,
+   więc test pamięci poniżej jest tym ważniejszy.
 
 ### 12.2. Test pamięci (memtest86+)
 
@@ -782,26 +863,44 @@ uszkodzić bazę.
 4. Zostaw test na **co najmniej 2 pełne przebiegi** (dla 16 GB to kilka godzin).
    Wynik prawidłowy: **0 błędów**. Jakikolwiek błąd = wadliwy moduł → wróć do
    modułu 4 GB i reklamuj/zwróć zakup.
-5. Zakup na odległość daje zwykle 14 dni na odstąpienie od umowy (sprawdź
-   warunki sklepu) — zmieść test w tym terminie.
+5. Zakup na odległość daje zwykle 14 dni na odstąpienie od umowy, liczone od
+   **otrzymania towaru** (sprawdź warunki sklepu) — zmieść test w tym terminie.
 6. Wyjmij pendrive, uruchom NAS normalnie. W QTS sprawdź, że widać 16 GB
    (**Panel sterowania → Stan systemu → Informacje o systemie**).
 
 ### 12.3. Przełączenie profilu 4 → 16 GB
 
-1. W `.env` w sekcji „Profil pamięci: 4 GB RAM (aktywny)” **zakomentuj** (przez `#`)
-   wszystkie siedem zmiennych: `OP_DB_MEM`, `OP_CACHE_MEM`, `OP_CACHE_MB`,
-   `OP_WEB_MEM`, `OP_WORKER_MEM`, `OP_WEB_WORKERS`, `OP_GOOD_JOB_MAX_THREADS`.
-2. W sekcji „Profil pamięci: 16 GB RAM” **odkomentuj** te same siedem zmiennych
-   (profil 8 GB działa tak samo, jeśli masz 8 GB).
-3. Zastosuj:
+Siedem zmiennych profilu pamięci jest w `.env` w sekcji „Profil pamieci: 4 GB
+RAM (aktywny)”. Podmień ich wartości na wartości profilu 16 GB — skopiuj i wklej
+w katalogu `deploy/qnap`:
 
-   ```bash
-   docker compose --profile public --profile tailnet up -d
-   ```
+```bash
+cd /share/Container/openproject-src/deploy/qnap
+sed -i "s|^OP_DB_MEM=.*|OP_DB_MEM=2g|" .env
+sed -i "s|^OP_CACHE_MEM=.*|OP_CACHE_MEM=256m|" .env
+sed -i "s|^OP_CACHE_MB=.*|OP_CACHE_MB=192|" .env
+sed -i "s|^OP_WEB_MEM=.*|OP_WEB_MEM=3g|" .env
+sed -i "s|^OP_WORKER_MEM=.*|OP_WORKER_MEM=1536m|" .env
+sed -i "s|^OP_WEB_WORKERS=.*|OP_WEB_WORKERS=2|" .env
+sed -i "s|^OP_GOOD_JOB_MAX_THREADS=.*|OP_GOOD_JOB_MAX_THREADS=10|" .env
+grep -E '^OP_(DB_MEM|CACHE_MEM|CACHE_MB|WEB_MEM|WORKER_MEM|WEB_WORKERS|GOOD_JOB_MAX_THREADS)=' .env
+```
 
-   Docker odtworzy tylko kontenery, których ustawienia się zmieniły.
-4. Sprawdź limity: `docker stats --no-stream`.
+Ostatnie polecenie wypisuje siedem linii z nowymi wartościami. Zakomentowane
+bloki „Profil pamieci: 8 GB RAM” i „Profil pamieci: 16 GB RAM” w `.env` są tylko
+ściągą i zostają bez zmian; polecenia `sed` zmieniają wyłącznie linie aktywne
+(bez `#` na początku). Dla 8 GB użyj wartości z kolumny „8 GB” tabeli poniżej.
+Powrót do 4 GB działa tak samo, z wartościami z kolumny „4 GB”.
+
+Zastosuj zmiany:
+
+```bash
+docker compose --profile public --profile tailnet up -d
+docker stats --no-stream
+```
+
+Docker odtworzy tylko kontenery, których ustawienia się zmieniły, a `docker stats`
+pokaże nowe limity pamięci.
 
 Wartości profili:
 
@@ -944,7 +1043,7 @@ Wartości ustawiasz w pliku `deploy/qnap/.env`. Zmiany zastosujesz poleceniem
 |---------|-----------|------|
 | `OP_PUBLIC_HOST` | `projekty.example.com` | Publiczna nazwa hosta z Cloudflare, np. `pm.twoja-domena.pl`. Główny adres aplikacji, używany w linkach. |
 | `OP_TAILSCALE_HOST` | `openproject.tailnet-name.ts.net` | Nazwa węzła w Tailscale. Dodatkowy dozwolony adres aplikacji; nie może być pusta. |
-| `OP_LOCAL_PORT` | `8080` | Port na `127.0.0.1` NAS-a dla profilu `local` (diagnostyka). Zmień, jeśli zajęty przez QTS. |
+| `OP_LOCAL_PORT` | `8081` | Port na `127.0.0.1` NAS-a dla profilu `local` (diagnostyka). Nie używaj 8080 — zajmuje go panel QTS. |
 
 ### Sekrety
 
