@@ -1038,6 +1038,12 @@ możesz trzymać na SSD, a **kopie zapasowe zostaw na dyskach HDD w RAID**.
 
 ## 14. Rozwiązywanie problemów
 
+Gdy cały NAS działa wolno (nie tylko OpenProject), uruchom skrypt diagnostyczny. Tylko czyta dane i zapisuje raport do pliku w bieżącym katalogu (`--speedtest` dodaje test odczytu 1 GB z woluminu):
+
+```bash
+sh diag/nas-diag.sh --speedtest
+```
+
 Podstawowe narzędzia:
 
 ```bash
